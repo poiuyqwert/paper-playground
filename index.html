@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style type="text/css">
+	html,body {
+		margin: 0;
+		padding: 0;
+	    overflow: hidden;
+	    width: 100%;
+	    height: 100%;
+	}
+
+	/* Scale canvas with resize attribute to full size */
+	canvas[resize] {
+		padding: 0;
+	    width: 100%;
+	    height: 100%;
+	}
+</style>
+<script type="text/javascript" src="js/libs/paper-core.js"></script>
+<script type="text/javascript">
+
+	window.onload = function() {
+		paper.setup('myCanvas');
+
+		debugger;
+
+		var lineLayer = new paper.Layer();
+		var dotLayer = new paper.Layer();
+		var doodLayer = new paper.Layer();
+
+		var minDistance = 150;
+		var maxDistance = 190;
+		var spawn = new paper.Rectangle(
+			minDistance / 2,
+			minDistance / 2,
+			paper.view.bounds.width - minDistance,
+			paper.view.bounds.height - minDistance
+		);
+		var dots = [];
+		var sanity = 1000;
+		var pingOnFrame = function(event) {
+			this.scale(1 + 1 * event.delta);
+			this.strokeColor.alpha -= 1 * event.delta;
+			if (this.strokeColor.alpha < 0.01) {
+				this.remove();
+			}
+		};
+		var dotOnMouseEnter = function(event) {
+			var doPing = (function() {
+				var ping = new paper.Path.Circle(this.position.clone(), 20);
+				lineLayer.addChild(ping);
+				ping.sendToBack();
+				ping.strokeColor = new paper.Color(0,0,0,128);
+				ping.strokeWidth = 5;
+				ping.onFrame = pingOnFrame;
+			}).bind(this);
+			doPing();
+			this.data.pingInterval = setInterval(doPing, 1000);
+		};
+		var dotOnMouseLeave = function(event) {
+			clearInterval(this.data.pingInterval);
+			this.data.pingInterval = null;
+		};
+		var createDot = function(pos) {
+			var dot = new paper.Path.Circle(pos, 25);
+			dotLayer.addChild(dot);
+			dots.push(dot);
+			dot.fillColor = 'black';
+			dot.onMouseEnter = dotOnMouseEnter;
+			dot.onMouseLeave = dotOnMouseLeave;
+			return dot;
+		};
+		var base = createDot(new paper.Point(spawn.x + Math.random() * spawn.width, spawn.y + Math.random() * spawn.height));
+		base.fillColor = '#682B1B';
+		while (dots.length < 15 && sanity > 0) {
+			var root = dots[Math.round((dots.length-1) * Math.random())];
+			var dist = minDistance + (maxDistance - minDistance) * Math.random();
+			var angle = Math.PI*2 * Math.random();
+			var pos = null;
+			for (var a = 0; a < Math.PI*2; a += Math.PI/2) {
+				pos = root.position.clone();
+				pos.x += Math.cos(angle+a) * dist;
+				pos.y += Math.sin(angle+a) * dist;
+				if (spawn.contains(pos)) {
+					for (var i = 0; i < dots.length; i++) {
+						var dot = dots[i];
+						var dist = pos.getDistance(dot.position);
+						if (dist < minDistance) {
+							pos = null;
+							break;
+						}
+					}
+				} else {
+					pos = null;
+				}
+				if (pos !== null) {
+					break;
+				}
+			}
+			if (pos !== null) {
+				sanity = 1000;
+				var dot = createDot(pos);
+			} else {
+				sanity -= 1;
+			}
+		}
+
+		var size = 5;
+		var segments = [
+			new paper.Point(5, 0),
+			new paper.Point(Math.cos(Math.PI * 2/3) * 5, Math.sin(Math.PI * 2/3) * 5),
+			new paper.Point(Math.cos(Math.PI * 4/3) * 5, Math.sin(Math.PI * 4/3) * 5)
+		];
+
+		var doods = [];
+		var doodOnFrame = function(event) {
+			this.data.angle += (125 - this.data.offset) * Math.PI/180 * event.delta;
+			var pos = this.data.base.position.clone();
+			pos.x += Math.cos(this.data.angle) * this.data.offset;
+			pos.y += Math.sin(this.data.angle) * this.data.offset;
+			this.position = pos;
+		};
+		while (doods.length < 5) {
+			var dood = new paper.Path(segments);
+			doodLayer.addChild(dood);
+			doods.push(dood);
+			dood.fillColor = '#682B1B';
+			dood.data.base = base;
+			dood.data.offset = 35 + 10 * Math.random();
+			dood.data.angle = Math.PI * 2 * Math.random();
+
+			dood.rotate(360 * Math.random());
+			dood.onFrame = doodOnFrame;
+		}
+		dotLayer.activate();
+
+		var selected = null;
+		var start = null;
+		var line = null;
+
+		var tool = new paper.Tool();
+		tool.onMouseDown = function(event) {
+			for (var i = 0; i < dots.length; i++) {
+				var dot = dots[i];
+				if (dot.contains(event.point)) {
+					start = dot;
+					break;
+				}
+			}
+		}
+
+		tool.onMouseDrag = function(event) {
+			if (line === null && start !== null) {
+				line = new paper.Path();
+				lineLayer.addChild(line);
+				line.strokeColor = new paper.Color(0,0,0,0.75);
+				line.strokeWidth = 20;
+				line.add(start.bounds.center);
+				line.add(event.point);
+
+				var cost = new paper.PointText();
+				lineLayer.addChild(cost);
+				line.data.cost = cost;
+				cost.content = '^';
+				cost.justification = 'center';
+			}
+			if (line !== null) {
+				var startPos = start.position;
+				var endPos = event.point;
+				// if (startPos.getDistance(endPos) > maxDistance) {
+				// 	var dir = endPos.subtract(startPos);
+				// 	dir.setLength(maxDistance);
+				// 	endPos = startPos.add(dir);
+				// }
+				line.segments[1].point = endPos;
+
+				line.data.cost.content = '^' + Math.round(line.length);
+				if (startPos.getDistance(endPos) > maxDistance) {
+					line.data.cost.fillColor = '#FF0000';
+				} else {
+					line.data.cost.fillColor = '#00FF00';
+				}
+				var pos = line.position.clone();
+				pos.y += line.data.cost.fontSize/3;
+				line.data.cost.point = pos;
+			}
+		};
+
+		var selOnFrame = function(event) {
+			this.strokeColor.alpha = 0.75 + 0.25 * Math.sin(Math.PI*2 * event.time);
+		};
+		tool.onMouseUp = function(event) {
+			if (line !== null) {
+				line.data.cost.remove();
+
+				var startPos = start.position;
+				for (var i = 0; i < dots.length; i++) {
+					var end = dots[i];
+					if (end != start && end.contains(event.point) && startPos.getDistance(end.position) <= maxDistance) {
+						line.segments[1].point = end.position;
+						line.strokeColor.alpha = 1;
+						line = null;
+						break;
+					}
+				}
+				if (line !== null) {
+					line.remove();
+					line = null;
+				}
+			} else if (start !== null && start !== selected) {
+				if (selected !== null) {
+					selected.data.selection.remove();
+				}
+				selected = start;
+				console.log(paper.project.activeLayer);
+				console.log(start.layer);
+				var sel = new paper.Path.Circle(start.position, 23);
+				dotLayer.addChild(sel);
+				start.data.selection = sel;
+				sel.strokeColor = 'white';
+				sel.strokeWidth = 2;
+				sel.onFrame = selOnFrame;
+			}
+			start = null;
+		};
+
+		tool.activate();
+	};
+</script>
+</head>
+<body>
+	<canvas id="myCanvas" resize></canvas>
+</body>
+</html>
