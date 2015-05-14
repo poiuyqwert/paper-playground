@@ -29,21 +29,25 @@
 
 		var players = [
 			{
+				id: 0,
 				name: 'red',
 				color: '#682B1B',
 				bases: []
 			}
 			,{
+				id: 1,
 				name: 'green',
 				color: '#1B682B',
 				bases: []
 			}
 			,{
+				id: 2,
 				name: 'blue',
 				color: '#1B2B68',
 				bases: []
 			}
 		];
+		var currentPlayer = players[0];
 
 		var lineLayer = new Layer();
 		var dotLayer = new Layer();
@@ -81,14 +85,34 @@
 			clearInterval(this.data.pingInterval);
 			this.data.pingInterval = null;
 		};
+		var createDood = function(dot, player) {
+			var dood = new Path(doodSegments);
+			doodLayer.addChild(dood);
+			dot.data.doods[player.id].push(dood);
+			dood.data.owner = player;
+			dood.data.base = dot;
+			dood.data.offset = 35 + 10 * Math.random();
+			dood.data.angle = Math.PI * 2 * Math.random();
+
+			dood.rotate(360 * Math.random());
+			dood.onFrame = doodOnFrame;
+		};
 		var dotOnFrame = function(event) {
 			if (this.data.owner) {
 				this.fillColor = this.data.owner.color;
+				this.data.spawnTimer += event.delta;
+				if (this.data.spawnTimer >= 3) {
+					createDood(this, this.data.owner);
+					this.data.spawnTimer -= 3;
+				}
 			}
 		};
 		var createDot = function(pos) {
 			var dot = new Path.Circle(pos, 25);
-			dot.data.doods = [];
+			dot.data.doods = {};
+			for (var p = 0; p < players.length; p++) {
+				dot.data.doods[players[p].id] = [];
+			}
 			dot.data.connections = [];
 			dotLayer.addChild(dot);
 			dots.push(dot);
@@ -102,7 +126,7 @@
 		createDot(new Point(spawn.x + Math.random() * spawn.width, spawn.y + Math.random() * spawn.height));
 		// Pick a random dot and try and find a valid place around it
 		var sanity = 1000;
-		while (dots.length < 15 && sanity > 0) {
+		while (sanity > 0) {
 			var root = dots[Math.round((dots.length-1) * Math.random())];
 			var dist = minDistance + (maxDistance - minDistance) * Math.random();
 			var angle = Math.PI*2 * Math.random();
@@ -136,7 +160,7 @@
 		}
 
 		var size = 5;
-		var segments = [
+		var doodSegments = [
 			new Point(5, 0),
 			new Point(Math.cos(Math.PI * 2/3) * 5, Math.sin(Math.PI * 2/3) * 5),
 			new Point(Math.cos(Math.PI * 4/3) * 5, Math.sin(Math.PI * 4/3) * 5)
@@ -154,13 +178,14 @@
 			} else {
 				this.fillColor = 'black';
 			}
+			var oldPos = this.position.clone();
 			if (this.data.connection) {
 				var pos = spotForDood(this, this.data.connection.dot);
 				pos = pos.subtract(this.position);
 				var move = this.data.speed * event.delta;
 				if (pos.length <= move) {
 					this.data.base = this.data.connection.dot;
-					this.data.base.data.doods.push(this);
+					this.data.base.data.doods[this.owner.id].push(this);
 					this.data.connection = null;
 				} else {
 					pos.length = move;
@@ -172,6 +197,7 @@
 				this.data.angle += (125 - this.data.offset) * Math.PI/180 * event.delta;
 				this.position = spotForDood(this, this.data.base);
 			}
+			this.data.lastDirection = this.position.subtract(oldPos).normalize();
 		};
 		var closestDot = function(point) {
 			var distance = 80081355;
@@ -186,27 +212,23 @@
 			}
 			return closest;
 		};
+		var colonize = function(dot, player) {
+			dot.data.spawnTimer = 0;
+			dot.data.owner = player;
+			player.bases.push(dot);
+		};
 		var radius = Math.max(view.bounds.width,view.bounds.height);
-		var angle = Math.PI/4;
+		var angle = 30 * Math.PI/180;
 		var deltaAngle = Math.PI*2 / players.length;
 		for (var p = 0; p < players.length; p++) {
 			var player = players[p];
 			var pos = spawn.center.clone();
 			pos.x += Math.cos(angle + deltaAngle * p) * radius;
 			pos.y += Math.sin(angle + deltaAngle * p) * radius;
-			player.base = closestDot(pos);
-			player.base.data.owner = player;
-			while (player.base.data.doods.length < 5) {
-				var dood = new Path(segments);
-				doodLayer.addChild(dood);
-				player.base.data.doods.push(dood);
-				dood.data.owner = player;
-				dood.data.base = player.base;
-				dood.data.offset = 35 + 10 * Math.random();
-				dood.data.angle = Math.PI * 2 * Math.random();
-
-				dood.rotate(360 * Math.random());
-				dood.onFrame = doodOnFrame;
+			var base = closestDot(pos);
+			colonize(base, player);
+			while (base.data.doods[player.id].length < 5) {
+				createDood(base, player);
 			}
 		}
 
@@ -229,6 +251,7 @@
 			if (line === null && start !== null) {
 				line = new Path();
 				lineLayer.addChild(line);
+
 				line.strokeColor = new Color(0,0,0,0.75);
 				line.strokeWidth = 20;
 				line.add(start.bounds.center);
@@ -252,9 +275,9 @@
 				}
 				line.segments[1].point = endPos;
 
-				var dist = Math.round(line.length);
+				var dist = Math.ceil(line.length / 100);
 				line.data.cost.content = '^' + dist;
-				if (dist > maxDistance) {
+				if (dist > start.data.doods[currentPlayer.id].length) {
 					line.data.cost.fillColor = '#FF0000';
 				} else {
 					line.data.cost.fillColor = '#00FF00';
@@ -276,10 +299,34 @@
 			});
 		};
 		var moveDood = function(start, connection) {
-			var dood = start.data.doods.pop();
+			var dood = start.data.doods[currentPlayer.id].pop();
 			dood.data.base = null;
 			dood.data.connection = connection;
 			dood.data.speed = connection.line.length / 2;
+		};
+		var killDood = function(dood) {
+			if (dood.data.base !== null) {
+				dood.data.base.data.doods[currentPlayer.id].splice(dood.data.base.data.doods[currentPlayer.id].indexOf(dood),1);
+			}
+			for (var c = 0; c < 5; c++) {
+				var cloud = new Path.Circle(dood.position,5);
+				doodLayer.addChild(cloud);
+				cloud.fillColor = new Color(0,0,0,0.5);
+				var dir = new Point(Math.cos(Math.PI*2*Math.random()),Math.sin(Math.PI*2*Math.random())).normalize();
+				dir = dir.add(dood.data.lastDirection);
+				cloud.data.dir = dir;
+				cloud.onFrame = function(event) {
+					var pos = this.position;
+					pos.x += this.data.dir.x * 50 * event.delta;
+					pos.y += this.data.dir.y * 50 * event.delta;
+					this.position = pos;
+					this.fillColor.alpha = 0.5 - 0.5 * event.time/0.3;
+					if (event.time > 0.3) {
+						this.remove(0);
+					}
+				};
+			}
+			dood.remove();
 		};
 		var selOnFrame = function(event) {
 			this.strokeColor.alpha = 0.75 + 0.25 * Math.sin(Math.PI*2 * event.time);
@@ -298,11 +345,19 @@
 				var startPos = start.position;
 				for (var i = 0; i < dots.length; i++) {
 					var end = dots[i];
-					if (end != start && end.contains(event.point) && startPos.getDistance(end.position) <= maxDistance) {
-						line.segments[1].point = end.position;
-						line.strokeColor.alpha = 1;
-						addConnections(start,line,end);
-						line = null;
+					if (end != start && end.contains(event.point)) {
+						var dist = Math.ceil(line.length / 100);
+						if (dist <= start.data.doods[currentPlayer.id].length) {
+							while (dist) {
+								var dood = start.data.doods[currentPlayer.id][0];
+								killDood(dood);
+								dist--;
+							}
+							line.segments[1].point = end.position;
+							line.strokeColor.alpha = 1;
+							addConnections(start,line,end);
+							line = null;
+						}
 						break;
 					}
 				}
@@ -312,7 +367,7 @@
 				}
 			} else if (start !== null && start !== selected) {
 				if (selected !== null && Key.isDown('a')) {
-					if (selected.data.doods.length) {
+					if (selected.data.doods[currentPlayer.id].length) {
 						for (var i = 0; i < selected.data.connections.length; i++) {
 							var connection = selected.data.connections[i];
 							if (connection.dot === start) {
