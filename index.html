@@ -169,11 +169,13 @@
 			if (line !== null) {
 				var startPos = start.position;
 				var endPos = event.point;
-				// if (startPos.getDistance(endPos) > maxDistance) {
-				// 	var dir = endPos.subtract(startPos);
-				// 	dir.setLength(maxDistance);
-				// 	endPos = startPos.add(dir);
-				// }
+				for (var i = 0; i < dots.length; i++) {
+					var end = dots[i];
+					if (end != start && end.contains(event.point)) {
+						endPos = end.position;
+						break;
+					}
+				}
 				line.segments[1].point = endPos;
 
 				line.data.cost.content = '^' + Math.round(line.length);
