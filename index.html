@@ -185,7 +185,7 @@
 				var move = this.data.speed * event.delta;
 				if (pos.length <= move) {
 					this.data.base = this.data.connection.dot;
-					this.data.base.data.doods[this.owner.id].push(this);
+					this.data.base.data.doods[this.data.owner.id].push(this);
 					this.data.connection = null;
 				} else {
 					pos.length = move;
