@@ -157,6 +157,29 @@
 						this.data.spawnTimer -= 3;
 					}
 				}
+				this.data.text.content = '^' + this.data.doods[this.data.owner.id].length;
+				this.data.text.fillColor = 'white';
+			} else {
+				var count = 0;
+				var most = null;
+				for (var p = 0; p < players.length; p++) {
+					var player = players[p];
+					var c = this.data.doods[player.id].length;
+					if (c > count) {
+						count = c;
+						most = player;
+					}
+				}
+				if (count) {
+					this.data.text.content = '^' + count;
+					if (count < 10) {
+						this.data.text.fillColor = '#FF0000';
+					} else {
+						this.data.text.fillColor = '#00FF00';
+					}
+				} else {
+					this.data.text.content = '';
+				}
 			}
 		};
 		var createDot = function(pos) {
@@ -172,6 +195,14 @@
 			dot.onMouseEnter = dotOnMouseEnter;
 			dot.onMouseLeave = dotOnMouseLeave;
 			dot.onFrame = dotOnFrame;
+
+			var text = new PointText();
+			dot.data.text = text;
+			var pos = dot.position.clone();
+			pos.y += text.fontSize/3;
+			text.point = pos;
+			text.justification = 'center';
+
 			return dot;
 		};
 		// Seed dot for generation
