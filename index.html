@@ -53,6 +53,12 @@
 		var dotLayer = new Layer();
 		var doodLayer = new Layer();
 
+		var fps = new PointText();
+		fps.point = new Point(20,20);
+		fps.onFrame = function(event) {
+			fps.content = 'FPS: ' + Math.round(1 / event.delta)
+		};
+
 		var minDistance = 150;
 		var maxDistance = 200;
 		var spawn = new Rectangle(
@@ -85,25 +91,71 @@
 			clearInterval(this.data.pingInterval);
 			this.data.pingInterval = null;
 		};
+		var doodArived = function(dood, destination) {
+			var distance = 80081355;
+			var closest = null;
+			for (var p = 0; p < players.length; p++) {
+				var player = players[p];
+				if (player.id != dood.data.owner.id) {
+					for (var d = 0; d < destination.data.doods[player.id].length; d++) {
+						var check = destination.data.doods[player.id][d];
+						var dist = check.position.getDistance(dood.position);
+						if (dist < distance) {
+							distance = dist;
+							closest = check;
+						}
+					}
+				}
+			}
+			if (closest === null) {
+				dood.data.base = destination;
+				destination.data.doods[dood.data.owner.id].push(dood);
+				dood.data.connection = null;
+			} else {
+				var laser = new Path([dood.position,closest.position]);
+				laser.strokeColor = new Color(1,0,0,1);
+				doodLayer.addChild(laser);
+				laser.onFrame = function(event) {
+					this.strokeColor.alpha = 1 - event.time * 2;
+					if (event.time >= 0.5) {
+						this.remove();
+					}
+				};
+
+				killDood(dood);
+				killDood(closest);
+			}
+		};
+		var spotForDood = function(dood, dot) {
+			var pos = dot.position.clone();
+			pos.x += Math.cos(dood.data.angle) * dood.data.offset;
+			pos.y += Math.sin(dood.data.angle) * dood.data.offset;
+			return pos;
+		};
 		var createDood = function(dot, player) {
 			var dood = new Path(doodSegments);
 			doodLayer.addChild(dood);
-			dot.data.doods[player.id].push(dood);
+			// dot.data.doods[player.id].push(dood);
 			dood.data.owner = player;
-			dood.data.base = dot;
+			// dood.data.base = dot;
 			dood.data.offset = 35 + 10 * Math.random();
 			dood.data.angle = Math.PI * 2 * Math.random();
+			dood.position = spotForDood(dood, dot);
 
 			dood.rotate(360 * Math.random());
 			dood.onFrame = doodOnFrame;
+
+			doodArived(dood, dot);
 		};
 		var dotOnFrame = function(event) {
 			if (this.data.owner) {
 				this.fillColor = this.data.owner.color;
-				this.data.spawnTimer += event.delta;
-				if (this.data.spawnTimer >= 3) {
-					createDood(this, this.data.owner);
-					this.data.spawnTimer -= 3;
+				if (this.data.doods[this.data.owner.id].length < 20) {
+					this.data.spawnTimer += event.delta;
+					if (this.data.spawnTimer >= 3) {
+						createDood(this, this.data.owner);
+						this.data.spawnTimer -= 3;
+					}
 				}
 			}
 		};
@@ -166,12 +218,6 @@
 			new Point(Math.cos(Math.PI * 4/3) * 5, Math.sin(Math.PI * 4/3) * 5)
 		];
 
-		var spotForDood = function(dood, dot) {
-			var pos = dot.position.clone();
-			pos.x += Math.cos(dood.data.angle) * dood.data.offset;
-			pos.y += Math.sin(dood.data.angle) * dood.data.offset;
-			return pos;
-		};
 		var doodOnFrame = function(event) {
 			if (this.data.owner) {
 				this.fillColor = this.data.owner.color;
@@ -184,9 +230,7 @@
 				pos = pos.subtract(this.position);
 				var move = this.data.speed * event.delta;
 				if (pos.length <= move) {
-					this.data.base = this.data.connection.dot;
-					this.data.base.data.doods[this.data.owner.id].push(this);
-					this.data.connection = null;
+					doodArived(this, this.data.connection.dot);
 				} else {
 					pos.length = move;
 					pos = pos.add(this.position);
@@ -213,6 +257,9 @@
 			return closest;
 		};
 		var colonize = function(dot, player) {
+			if (dot.data.owner) {
+				dot.data.owner.bases.splice(dot.data.owner.bases.indexOf(dot), 1);
+			}
 			dot.data.spawnTimer = 0;
 			dot.data.owner = player;
 			player.bases.push(dot);
@@ -305,8 +352,8 @@
 			dood.data.speed = connection.line.length / 2;
 		};
 		var killDood = function(dood) {
-			if (dood.data.base !== null) {
-				dood.data.base.data.doods[currentPlayer.id].splice(dood.data.base.data.doods[currentPlayer.id].indexOf(dood),1);
+			if (dood.data.base) {
+				dood.data.base.data.doods[dood.data.owner.id].splice(dood.data.base.data.doods[dood.data.owner.id].indexOf(dood),1);
 			}
 			for (var c = 0; c < 5; c++) {
 				var cloud = new Path.Circle(dood.position,5);
@@ -326,17 +373,18 @@
 					}
 				};
 			}
+
 			dood.remove();
 		};
 		var selOnFrame = function(event) {
-			this.strokeColor.alpha = 0.75 + 0.25 * Math.sin(Math.PI*2 * event.time);
 			if (Key.isDown('a')) {
-				this.strokeColor.green = 0;
-				this.strokeColor.blue = 0;
+				this.strokeColor = '#FF0000';
+			} else if (Key.isDown('c')) {
+				this.strokeColor = '#00FF00';
 			} else {
-				this.strokeColor.green = 1;
-				this.strokeColor.blue = 1;
+				this.strokeColor = '#FFFFFF';
 			}
+			this.strokeColor.alpha = 0.75 + 0.25 * Math.sin(Math.PI*2 * event.time);
 		};
 		tool.onMouseUp = function(event) {
 			if (line !== null) {
@@ -365,18 +413,35 @@
 					line.remove();
 					line = null;
 				}
-			} else if (start !== null && start !== selected) {
+			} else if (start !== null) {
 				if (selected !== null && Key.isDown('a')) {
-					if (selected.data.doods[currentPlayer.id].length) {
+					if (start !== selected && selected.data.doods[currentPlayer.id].length) {
 						for (var i = 0; i < selected.data.connections.length; i++) {
 							var connection = selected.data.connections[i];
 							if (connection.dot === start) {
-								moveDood(selected, connection);
+								if (Key.isDown('shift')) {
+									moveDood(selected, connection);
+								} else {
+									while (selected.data.doods[currentPlayer.id].length) {
+										moveDood(selected, connection);
+									}
+								}
 								break;
 							}
 						}
 					}
-				} else {
+				} else if (selected !== null && Key.isDown('c')) {
+					if (
+						start === selected
+						&& (!selected.data.owner || selected.data.owner.id != currentPlayer.id)
+						&& selected.data.doods[currentPlayer.id].length >= 10
+					) {
+						colonize(selected, currentPlayer);
+						for (var k = 10; k; k--) {
+							killDood(selected.data.doods[currentPlayer.id][0]);
+						}
+					}
+				} else if (start !== selected) {
 					if (selected !== null) {
 						selected.data.selection.remove();
 					}
