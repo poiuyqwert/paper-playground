@@ -22,21 +22,22 @@
 <script type="text/javascript">
 
 	window.onload = function() {
+		paper.install(window);
 		paper.setup('myCanvas');
 
 		debugger;
 
-		var lineLayer = new paper.Layer();
-		var dotLayer = new paper.Layer();
-		var doodLayer = new paper.Layer();
+		var lineLayer = new Layer();
+		var dotLayer = new Layer();
+		var doodLayer = new Layer();
 
 		var minDistance = 150;
-		var maxDistance = 190;
-		var spawn = new paper.Rectangle(
+		var maxDistance = 200;
+		var spawn = new Rectangle(
 			minDistance / 2,
 			minDistance / 2,
-			paper.view.bounds.width - minDistance,
-			paper.view.bounds.height - minDistance
+			view.bounds.width - minDistance,
+			view.bounds.height - minDistance
 		);
 		var dots = [];
 		var sanity = 1000;
@@ -49,10 +50,10 @@
 		};
 		var dotOnMouseEnter = function(event) {
 			var doPing = (function() {
-				var ping = new paper.Path.Circle(this.position.clone(), 20);
+				var ping = new Path.Circle(this.position.clone(), 20);
 				lineLayer.addChild(ping);
 				ping.sendToBack();
-				ping.strokeColor = new paper.Color(0,0,0,128);
+				ping.strokeColor = new Color(0,0,0,128);
 				ping.strokeWidth = 5;
 				ping.onFrame = pingOnFrame;
 			}).bind(this);
@@ -64,7 +65,9 @@
 			this.data.pingInterval = null;
 		};
 		var createDot = function(pos) {
-			var dot = new paper.Path.Circle(pos, 25);
+			var dot = new Path.Circle(pos, 25);
+			dot.data.doods = [];
+			dot.data.connections = [];
 			dotLayer.addChild(dot);
 			dots.push(dot);
 			dot.fillColor = 'black';
@@ -72,7 +75,7 @@
 			dot.onMouseLeave = dotOnMouseLeave;
 			return dot;
 		};
-		var base = createDot(new paper.Point(spawn.x + Math.random() * spawn.width, spawn.y + Math.random() * spawn.height));
+		var base = createDot(new Point(spawn.x + Math.random() * spawn.width, spawn.y + Math.random() * spawn.height));
 		base.fillColor = '#682B1B';
 		while (dots.length < 15 && sanity > 0) {
 			var root = dots[Math.round((dots.length-1) * Math.random())];
@@ -109,23 +112,41 @@
 
 		var size = 5;
 		var segments = [
-			new paper.Point(5, 0),
-			new paper.Point(Math.cos(Math.PI * 2/3) * 5, Math.sin(Math.PI * 2/3) * 5),
-			new paper.Point(Math.cos(Math.PI * 4/3) * 5, Math.sin(Math.PI * 4/3) * 5)
+			new Point(5, 0),
+			new Point(Math.cos(Math.PI * 2/3) * 5, Math.sin(Math.PI * 2/3) * 5),
+			new Point(Math.cos(Math.PI * 4/3) * 5, Math.sin(Math.PI * 4/3) * 5)
 		];
 
-		var doods = [];
-		var doodOnFrame = function(event) {
-			this.data.angle += (125 - this.data.offset) * Math.PI/180 * event.delta;
-			var pos = this.data.base.position.clone();
-			pos.x += Math.cos(this.data.angle) * this.data.offset;
-			pos.y += Math.sin(this.data.angle) * this.data.offset;
-			this.position = pos;
+		var spotForDood = function(dood, dot) {
+			var pos = dot.position.clone();
+			pos.x += Math.cos(dood.data.angle) * dood.data.offset;
+			pos.y += Math.sin(dood.data.angle) * dood.data.offset;
+			return pos;
 		};
-		while (doods.length < 5) {
-			var dood = new paper.Path(segments);
+		var doodOnFrame = function(event) {
+			if (this.data.connection) {
+				var pos = spotForDood(this, this.data.connection.dot);
+				pos = pos.subtract(this.position);
+				var move = this.data.speed * event.delta;
+				if (pos.length <= move) {
+					this.data.base = this.data.connection.dot;
+					this.data.base.data.doods.push(this);
+					this.data.connection = null;
+				} else {
+					pos.length = move;
+					pos = pos.add(this.position);
+					this.position = pos;
+				}
+			}
+			if (this.data.base) {
+				this.data.angle += (125 - this.data.offset) * Math.PI/180 * event.delta;
+				this.position = spotForDood(this, this.data.base);
+			}
+		};
+		while (base.data.doods.length < 5) {
+			var dood = new Path(segments);
 			doodLayer.addChild(dood);
-			doods.push(dood);
+			base.data.doods.push(dood);
 			dood.fillColor = '#682B1B';
 			dood.data.base = base;
 			dood.data.offset = 35 + 10 * Math.random();
@@ -140,7 +161,7 @@
 		var start = null;
 		var line = null;
 
-		var tool = new paper.Tool();
+		var tool = new Tool();
 		tool.onMouseDown = function(event) {
 			for (var i = 0; i < dots.length; i++) {
 				var dot = dots[i];
@@ -153,14 +174,14 @@
 
 		tool.onMouseDrag = function(event) {
 			if (line === null && start !== null) {
-				line = new paper.Path();
+				line = new Path();
 				lineLayer.addChild(line);
-				line.strokeColor = new paper.Color(0,0,0,0.75);
+				line.strokeColor = new Color(0,0,0,0.75);
 				line.strokeWidth = 20;
 				line.add(start.bounds.center);
 				line.add(event.point);
 
-				var cost = new paper.PointText();
+				var cost = new PointText();
 				lineLayer.addChild(cost);
 				line.data.cost = cost;
 				cost.content = '^';
@@ -178,8 +199,9 @@
 				}
 				line.segments[1].point = endPos;
 
-				line.data.cost.content = '^' + Math.round(line.length);
-				if (startPos.getDistance(endPos) > maxDistance) {
+				var dist = Math.round(line.length);
+				line.data.cost.content = '^' + dist;
+				if (dist > maxDistance) {
 					line.data.cost.fillColor = '#FF0000';
 				} else {
 					line.data.cost.fillColor = '#00FF00';
@@ -190,8 +212,31 @@
 			}
 		};
 
+		var addConnections = function(start, line, end) {
+			start.data.connections.push({
+				dot: end,
+				line: line
+			});
+			end.data.connections.push({
+				dot: start,
+				line: line
+			});
+		};
+		var moveDood = function(start, connection) {
+			var dood = start.data.doods.pop();
+			dood.data.base = null;
+			dood.data.connection = connection;
+			dood.data.speed = connection.line.length / 2;
+		};
 		var selOnFrame = function(event) {
 			this.strokeColor.alpha = 0.75 + 0.25 * Math.sin(Math.PI*2 * event.time);
+			if (Key.isDown('a')) {
+				this.strokeColor.green = 0;
+				this.strokeColor.blue = 0;
+			} else {
+				this.strokeColor.green = 1;
+				this.strokeColor.blue = 1;
+			}
 		};
 		tool.onMouseUp = function(event) {
 			if (line !== null) {
@@ -203,6 +248,7 @@
 					if (end != start && end.contains(event.point) && startPos.getDistance(end.position) <= maxDistance) {
 						line.segments[1].point = end.position;
 						line.strokeColor.alpha = 1;
+						addConnections(start,line,end);
 						line = null;
 						break;
 					}
@@ -212,18 +258,30 @@
 					line = null;
 				}
 			} else if (start !== null && start !== selected) {
-				if (selected !== null) {
-					selected.data.selection.remove();
+				if (selected !== null && Key.isDown('a')) {
+					if (selected.data.doods.length) {
+						for (var i = 0; i < selected.data.connections.length; i++) {
+							var connection = selected.data.connections[i];
+							if (connection.dot === start) {
+								moveDood(selected, connection);
+								break;
+							}
+						}
+					}
+				} else {
+					if (selected !== null) {
+						selected.data.selection.remove();
+					}
+					selected = start;
+					console.log(project.activeLayer);
+					console.log(start.layer);
+					var sel = new Path.Circle(start.position, 23);
+					dotLayer.addChild(sel);
+					start.data.selection = sel;
+					sel.strokeColor = 'white';
+					sel.strokeWidth = 2;
+					sel.onFrame = selOnFrame;
 				}
-				selected = start;
-				console.log(paper.project.activeLayer);
-				console.log(start.layer);
-				var sel = new paper.Path.Circle(start.position, 23);
-				dotLayer.addChild(sel);
-				start.data.selection = sel;
-				sel.strokeColor = 'white';
-				sel.strokeWidth = 2;
-				sel.onFrame = selOnFrame;
 			}
 			start = null;
 		};
