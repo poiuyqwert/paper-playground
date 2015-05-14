@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Dots n Dudes</title>
+<title>Dots, Dashes 'n Doods</title>
 <style type="text/css">
 	html,body {
 		margin: 0;
@@ -27,6 +27,24 @@
 
 		debugger;
 
+		var players = [
+			{
+				name: 'red',
+				color: '#682B1B',
+				bases: []
+			}
+			,{
+				name: 'green',
+				color: '#1B682B',
+				bases: []
+			}
+			,{
+				name: 'blue',
+				color: '#1B2B68',
+				bases: []
+			}
+		];
+
 		var lineLayer = new Layer();
 		var dotLayer = new Layer();
 		var doodLayer = new Layer();
@@ -40,7 +58,6 @@
 			view.bounds.height - minDistance
 		);
 		var dots = [];
-		var sanity = 1000;
 		var pingOnFrame = function(event) {
 			this.scale(1 + 1 * event.delta);
 			this.strokeColor.alpha -= 1 * event.delta;
@@ -64,6 +81,11 @@
 			clearInterval(this.data.pingInterval);
 			this.data.pingInterval = null;
 		};
+		var dotOnFrame = function(event) {
+			if (this.data.owner) {
+				this.fillColor = this.data.owner.color;
+			}
+		};
 		var createDot = function(pos) {
 			var dot = new Path.Circle(pos, 25);
 			dot.data.doods = [];
@@ -73,10 +95,13 @@
 			dot.fillColor = 'black';
 			dot.onMouseEnter = dotOnMouseEnter;
 			dot.onMouseLeave = dotOnMouseLeave;
+			dot.onFrame = dotOnFrame;
 			return dot;
 		};
-		var base = createDot(new Point(spawn.x + Math.random() * spawn.width, spawn.y + Math.random() * spawn.height));
-		base.fillColor = '#682B1B';
+		// Seed dot for generation
+		createDot(new Point(spawn.x + Math.random() * spawn.width, spawn.y + Math.random() * spawn.height));
+		// Pick a random dot and try and find a valid place around it
+		var sanity = 1000;
 		while (dots.length < 15 && sanity > 0) {
 			var root = dots[Math.round((dots.length-1) * Math.random())];
 			var dist = minDistance + (maxDistance - minDistance) * Math.random();
@@ -124,6 +149,11 @@
 			return pos;
 		};
 		var doodOnFrame = function(event) {
+			if (this.data.owner) {
+				this.fillColor = this.data.owner.color;
+			} else {
+				this.fillColor = 'black';
+			}
 			if (this.data.connection) {
 				var pos = spotForDood(this, this.data.connection.dot);
 				pos = pos.subtract(this.position);
@@ -143,19 +173,42 @@
 				this.position = spotForDood(this, this.data.base);
 			}
 		};
-		while (base.data.doods.length < 5) {
-			var dood = new Path(segments);
-			doodLayer.addChild(dood);
-			base.data.doods.push(dood);
-			dood.fillColor = '#682B1B';
-			dood.data.base = base;
-			dood.data.offset = 35 + 10 * Math.random();
-			dood.data.angle = Math.PI * 2 * Math.random();
+		var closestDot = function(point) {
+			var distance = 80081355;
+			var closest = null;
+			for (var d = 0; d < dots.length; d++) {
+				var dot = dots[d];
+				var dist = point.getDistance(dot.position);
+				if (dist < distance) {
+					distance = dist;
+					closest = dot;
+				}
+			}
+			return closest;
+		};
+		var radius = Math.max(view.bounds.width,view.bounds.height);
+		var angle = Math.PI/4;
+		var deltaAngle = Math.PI*2 / players.length;
+		for (var p = 0; p < players.length; p++) {
+			var player = players[p];
+			var pos = spawn.center.clone();
+			pos.x += Math.cos(angle + deltaAngle * p) * radius;
+			pos.y += Math.sin(angle + deltaAngle * p) * radius;
+			player.base = closestDot(pos);
+			player.base.data.owner = player;
+			while (player.base.data.doods.length < 5) {
+				var dood = new Path(segments);
+				doodLayer.addChild(dood);
+				player.base.data.doods.push(dood);
+				dood.data.owner = player;
+				dood.data.base = player.base;
+				dood.data.offset = 35 + 10 * Math.random();
+				dood.data.angle = Math.PI * 2 * Math.random();
 
-			dood.rotate(360 * Math.random());
-			dood.onFrame = doodOnFrame;
+				dood.rotate(360 * Math.random());
+				dood.onFrame = doodOnFrame;
+			}
 		}
-		dotLayer.activate();
 
 		var selected = null;
 		var start = null;
